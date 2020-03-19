@@ -383,4 +383,19 @@ TEST(Variant, EXT_IndexOf)
     static_assert(6u == V::index_of<MyClass>(), "Index is incorrect");
 }
 
+TEST(Variant, Visit)
+{
+    using var_t = util::variant<int, double, char>;
+    struct visitor_t{
+        size_t which = std::numeric_limits<size_t>::max();
+
+        void operator()(int ){     which = 0;}
+        void operator()(char ){    which = 1;}
+        void operator()(double ){  which = 2;}
+    };
+
+    visitor_t visitor;
+    visit(visitor, var_t{1});
+    ASSERT_EQ(0u, visitor.which);
+}
 } // namespace opencv_test

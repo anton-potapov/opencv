@@ -124,6 +124,12 @@ namespace util
             }
         };
 
+        template<typename R, typename T, typename V> struct visit_h {
+            static R help(V&& visitor, const Memory var_storage) {
+                return  std::forward<V>(visitor)(*reinterpret_cast<const T*>(var_storage));
+            }
+        };
+
         typedef void (*CCtr) (Memory, const Memory);  // Copy c-tor (variant)
         typedef void (*VCtr) (Memory, const void*);   // Copy c-tor (value)
         typedef void (*MCtr) (Memory, void*);         // Generic move c-tor
@@ -133,6 +139,9 @@ namespace util
         typedef void (*Dtor) (Memory);                // Destructor
 
         typedef bool (*Equal)(const Memory, const Memory); // Equality test (external)
+        template<typename R, typename V>
+        using visitor_f_t = R(*)(V&&, const Memory);
+
 
         static constexpr std::array<CCtr, sizeof...(Ts)> cctrs(){ return {{(&cctr_h<Ts>::help)...}};}
         static constexpr std::array<VCtr, sizeof...(Ts)> vctrs(){ return {{(&vctr_h<Ts>::help)...}};}
@@ -141,6 +150,13 @@ namespace util
         static constexpr std::array<Move, sizeof...(Ts)> mvers(){ return {{(&move_h<Ts>::help)...}};}
         static constexpr std::array<Swap, sizeof...(Ts)> swprs(){ return {{(&swap_h<Ts>::help)...}};}
         static constexpr std::array<Dtor, sizeof...(Ts)> dtors(){ return {{(&dtor_h<Ts>::help)...}};}
+
+        template <typename Visitor, typename... Types>
+        friend void visit(Visitor&& visitor, const util::variant<Types...> &v);
+
+        template<typename R, typename V>
+        static constexpr std::array<visitor_f_t<R,V>, sizeof...(Ts)> visitors(){ return {{(&visit_h<R,Ts,V>::help)...}};}
+
 
         std::size_t m_index = 0;
 
@@ -188,7 +204,10 @@ namespace util
         template<typename T> static constexpr std::size_t index_of();
     };
 
-    // FIMXE: visit
+    // FIMXE: multiple variant visit
+    // FIMXE: return type
+    template <typename Visitor, typename... Types>
+    void visit(Visitor&& visitor, const util::variant<Types...> &v);
 
     template<typename T, typename... Types>
     T& get(util::variant<Types...> &v);
@@ -319,6 +338,27 @@ namespace util
     constexpr std::size_t variant<Ts...>::index_of()
     {
         return util::type_list_index<T, Ts...>::value; // FIXME: tests!
+    }
+
+    // FIMXE: return type
+//    template <typename Visitor, typename Variant>
+//    void visit(Visitor&& /*visitor*/, Variant&& /*variant*/)
+//    {
+//
+//    }
+    template <typename Visitor, typename... Types>
+    void visit(Visitor&& visitor, const util::variant<Types...> &v)
+    {
+//        using Memory = typename util::variant<Types...>::Memory;
+//        template<typename T> struct visit_h {
+//            static void help_visit(Visitor&& visitor, Memory var_storage) {
+//                std::forward<Visitor>(visitor)(*reinterpret_cast<T*>(var_storage));
+//            }
+//        };
+//        using visitor_f_t =  void (*) (Visitor&&, Memory);  // visitor function
+//        static constexpr visitor_f_t table[] = {(&visit_h<Types>::help)...};
+        auto table = util::variant<Types...>::template visitors<void, Visitor>();
+        table[v.index()](std::forward<Visitor>(visitor), v.memory);
     }
 
     template<typename T, typename... Types>
