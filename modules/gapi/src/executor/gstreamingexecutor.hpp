@@ -99,7 +99,7 @@ protected:
 
         cv::GRunArgs in_constants;
 
-        std::shared_ptr<GIslandExecutable> isl_exec;
+        util::variant<std::shared_ptr<GIslandExecutable>, std::shared_ptr<GAsyncIslandExecutable>> isl_exec;
     };
     std::vector<OpDesc> m_ops;
 

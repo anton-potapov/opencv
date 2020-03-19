@@ -281,16 +281,17 @@ namespace util
     template<class T> typename detail::are_different<variant<Ts...>, T, variant<Ts...>&>
     ::type variant<Ts...>::operator=(T&& t) noexcept
     {
+        using decayed_t = typename std::decay<T>::type;
         // FIXME: No version with implicit type conversion available!
         static const constexpr std::size_t t_index =
-            util::type_list_index<T, Ts...>::value;
+            util::type_list_index<decayed_t, Ts...>::value;
 
         if (t_index == m_index)
         {
-            util::get<T>(*this) = std::move(t);
+            util::get<decayed_t>(*this) = std::forward<T>(t);
             return *this;
         }
-        else return (*this = variant(std::move(t)));
+        else return (*this = variant(std::forward<T>(t)));
     }
 
     template<typename... Ts>
@@ -328,8 +329,9 @@ namespace util
             util::type_list_index<T, Types...>::value;
 
         if (v.index() == t_index)
-            return *(T*)(&v.memory);  // workaround for ICC 2019
+//            return *(T*)(&v.memory);  // workaround for ICC 2019
             // original code: return reinterpret_cast<T&>(v.memory);
+            return *reinterpret_cast<T*>(static_cast<void*>(&v.memory[0]));
         else
             throw_error(bad_variant_access());
     }
@@ -341,7 +343,7 @@ namespace util
             util::type_list_index<T, Types...>::value;
 
         if (v.index() == t_index)
-            return *(const T*)(&v.memory);  // workaround for ICC 2019
+            return *reinterpret_cast<const T*>(static_cast<const void*>(&v.memory[0]));
             // original code: return reinterpret_cast<const T&>(v.memory);
         else
             throw_error(bad_variant_access());

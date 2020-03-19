@@ -66,7 +66,7 @@ protected:
     {
         std::vector<RcDesc> in_objects;
         std::vector<RcDesc> out_objects;
-        std::shared_ptr<GIslandExecutable> isl_exec;
+        island_exec_shared_ptr_variant_t isl_exec;
     };
     std::vector<OpDesc> m_ops;
 

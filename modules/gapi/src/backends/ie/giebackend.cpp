@@ -251,8 +251,12 @@ struct IEUnit {
                 }
             }
         }
-
-        auto this_network = this_plugin.LoadNetwork(net, {}); // FIXME: 2nd parameter to be
+        std::map<std::string, std::string> cfg;
+        if (params.use_streams) {
+            cfg[CONFIG_KEY(CPU_THROUGHPUT_STREAMS)] = "4";
+//            cfg[CONFIG_KEY_INTERNAL(CPU_THREADS_PER_STREAM)] = "1";
+        }
+        auto this_network = this_plugin.LoadNetwork(net, cfg); // FIXME: 2nd parameter to be
                                                               // configurable via the API
         auto this_request = this_network.CreateInferRequest();
 
@@ -407,8 +411,8 @@ cv::GArg cv::gimpl::ie::GIEExecutable::packArg(const cv::GArg &arg) {
     }
 }
 
-void cv::gimpl::ie::GIEExecutable::run(std::vector<InObj>  &&input_objs,
-                                       std::vector<OutObj> &&output_objs) {
+void cv::gimpl::ie::GIEExecutable::run(std::vector<GIslandExecutable::InObj>  &&input_objs,
+                                       std::vector<GIslandExecutable::OutObj> &&output_objs) {
     // Update resources with run-time information - what this Island
     // has received from user (or from another Island, or mix...)
     // FIXME: Check input/output objects against GIsland protocol
@@ -445,6 +449,13 @@ void cv::gimpl::ie::GIEExecutable::run(std::vector<InObj>  &&input_objs,
     kk.run(this_iec, uu, context);
 
     for (auto &it : output_objs) magazine::writeBack(m_res, it.first, it.second);
+}
+
+void cv::gimpl::ie::GIEExecutable::run(std::vector<GAsyncIslandExecutable::InObj>  &&input_objs,
+                 std::vector<GAsyncIslandExecutable::OutObj> &&output_objs,
+                 std::function<void(void)> callback)
+{
+    GAPI_Assert(false && "TBD");
 }
 
 namespace cv {

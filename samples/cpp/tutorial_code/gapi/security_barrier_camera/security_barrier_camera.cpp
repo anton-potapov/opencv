@@ -251,12 +251,14 @@ int main(int argc, char *argv[])
         cmd.get<std::string>("detm"),   // path to topology IR
         cmd.get<std::string>("detw"),   // path to weights
         cmd.get<std::string>("detd"),   // device specifier
+//        true                            // use streams
     };
 
     auto attr_net = cv::gapi::ie::Params<custom::VehicleAttributes> {
         cmd.get<std::string>("vehm"),   // path to topology IR
         cmd.get<std::string>("vehw"),   // path to weights
         cmd.get<std::string>("vehd"),   // device specifier
+        true                            // use streams
     }.cfgOutputLayers({ "color", "type" });
 
     // Fill a special LPR input (seq_ind) with a predefined value
@@ -268,6 +270,7 @@ int main(int argc, char *argv[])
         cmd.get<std::string>("lprm"),   // path to topology IR
         cmd.get<std::string>("lprw"),   // path to weights
         cmd.get<std::string>("lprd"),   // device specifier
+        true                            // use streams
     }.constInput("seq_ind", lpr_seq);
 
     auto kernels = cv::gapi::kernels<custom::OCVProcessDetections>();
@@ -336,7 +339,7 @@ int main(int argc, char *argv[])
         }
         cc.stop();
     }
-    std::cout << "Processed " << frames << " frames in " << avg.elapsed() << std::endl;
+    std::cout << "Processed " << frames << " frames in " << avg.elapsed() << "(" << avg.fps(frames) <<" fps)" << std::endl;
 
     return 0;
 }

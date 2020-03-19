@@ -53,7 +53,8 @@ struct IECompiled {
     InferenceEngine::InferRequest      this_request;
 };
 
-class GIEExecutable final: public GIslandExecutable
+
+class GIEExecutable : public GIslandExecutable, public GAsyncIslandExecutable
 {
     const ade::Graph &m_g;
     GModel::ConstGraph m_gm;
@@ -81,8 +82,13 @@ public:
         GAPI_Assert(false); // Not implemented yet
     }
 
-    virtual void run(std::vector<InObj>  &&input_objs,
-                     std::vector<OutObj> &&output_objs) override;
+    virtual void run(std::vector<GIslandExecutable::InObj>  &&input_objs,
+                     std::vector<GIslandExecutable::OutObj> &&output_objs) override;
+
+    virtual void run(std::vector<GAsyncIslandExecutable::InObj>  &&input_objs,
+                     std::vector<GAsyncIslandExecutable::OutObj> &&output_objs,
+                     std::function<void(void)> callback) override;
+
 };
 
 }}}

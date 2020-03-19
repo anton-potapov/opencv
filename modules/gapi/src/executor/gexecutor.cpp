@@ -221,7 +221,16 @@ void cv::gimpl::GExecutor::run(cv::gimpl::GRuntimeArgs &&args)
         }
 
         // (6)
-        op.isl_exec->run(std::move(in_objs), std::move(out_objs));
+//        util::variant<std::shared_ptr<GIslandExecutable>, std::shared_ptr<GAsyncIslandExecutable>> isl_exec;
+        if (cv::util::holds_alternative<std::shared_ptr<GIslandExecutable>>(op.isl_exec)){
+            auto & isl = cv::util::get<std::shared_ptr<GIslandExecutable>>(op.isl_exec);
+            isl->run(std::move(in_objs), std::move(out_objs));
+        } else if (cv::util::holds_alternative<std::shared_ptr<GAsyncIslandExecutable>>(op.isl_exec)){
+            auto & isl = cv::util::get<std::shared_ptr<GAsyncIslandExecutable>>(op.isl_exec);
+            isl->run(std::move(in_objs), std::move(out_objs), [](){});
+
+        }
+
     }
 
     // (7)
@@ -241,7 +250,7 @@ bool cv::gimpl::GExecutor::canReshape() const
 {
     // FIXME: Introduce proper reshaping support on GExecutor level
     // for all cases!
-    return (m_ops.size() == 1) && m_ops[0].isl_exec->canReshape();
+    return (m_ops.size() == 1) && cv::gimpl::canReshape(m_ops[0].isl_exec);
 }
 
 void cv::gimpl::GExecutor::reshape(const GMetaArgs& inMetas, const GCompileArgs& args)
@@ -251,5 +260,7 @@ void cv::gimpl::GExecutor::reshape(const GMetaArgs& inMetas, const GCompileArgs&
     ade::passes::PassContext ctx{g};
     passes::initMeta(ctx, inMetas);
     passes::inferMeta(ctx, true);
-    m_ops[0].isl_exec->reshape(g, args);
+
+
+    cv::gimpl::reshape(m_ops[0].isl_exec, g, args);
 }

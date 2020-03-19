@@ -40,14 +40,14 @@ cv::gapi::GBackend::Priv::compile(const ade::Graph&,
     return {};
 }
 
-std::unique_ptr<cv::gimpl::GIslandExecutable>
+cv::gapi::GBackend::Priv::ESyncAsyncPtrVar
 cv::gapi::GBackend::Priv::compile(const ade::Graph& graph,
                                   const GCompileArgs& args,
                                   const std::vector<ade::NodeHandle>& nodes,
                                   const std::vector<cv::gimpl::Data>&,
                                   const std::vector<cv::gimpl::Data>&) const
 {
-    return compile(graph, args, nodes);
+    return ESyncAsyncPtrVar{compile(graph, args, nodes)};
 }
 
 void cv::gapi::GBackend::Priv::addBackendPasses(ade::ExecutionEngineSetupContext &)

@@ -116,6 +116,32 @@ public:
     virtual ~GIslandExecutable() = default;
 };
 
+// GIslandExecutable - a backend-specific thing which executes
+// contents of an Island
+// * Is instantiated by the last step of the Islands fusion procedure;
+// * Is orchestrated by a GExecutor instance.
+//
+
+class GAsyncIslandExecutable
+{
+public:
+    using InObj  = std::pair<RcDesc, cv::GRunArg>;
+    using OutObj = std::pair<RcDesc, cv::GRunArgP>;
+
+    // FIXME: now run() requires full input vector to be available.
+    // actually, parts of subgraph may execute even if there's no all data
+    // slots in place.
+    // TODO: Add partial execution capabilities
+    virtual void run(std::vector<InObj>  &&input_objs,
+                     std::vector<OutObj> &&output_objs,
+                     std::function<void(void)> callback) = 0;
+
+    virtual bool canReshape() const = 0;
+    virtual void reshape(ade::Graph& g, const GCompileArgs& args) = 0;
+
+    virtual ~GAsyncIslandExecutable() = default;
+};
+
 // GIslandEmitter - a backend-specific thing which feeds data into
 // the pipeline. This one is just an interface, implementations are executor-defined.
 class GIslandEmitter
@@ -150,8 +176,14 @@ struct DataSlot
 struct IslandExec
 {
     static const char *name() { return "IslandExecutable"; }
-    std::shared_ptr<GIslandExecutable> object;
+    util::variant<std::shared_ptr<GIslandExecutable>, std::shared_ptr<GAsyncIslandExecutable>>  object;
 };
+
+using island_exec_shared_ptr_variant_t = decltype(IslandExec::object);
+
+bool canReshape(island_exec_shared_ptr_variant_t const& obj);
+void reshape(island_exec_shared_ptr_variant_t & obj, ade::Graph& g, const GCompileArgs& args);
+
 
 struct Emitter
 {

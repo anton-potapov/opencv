@@ -285,9 +285,17 @@ void GIslandModel::compileIslands(Graph &g, const ade::Graph &orig_g, const GCom
 
             auto island_exe = island_obj->backend().priv()
                 .compile(orig_g, args, topo_sorted_list, ins_data, outs_data);
-            GAPI_Assert(nullptr != island_exe);
+            //TODO: use visit here
+//            GAPI_Assert(nullptr != island_exe);
 
-            g.metadata(nh).set(IslandExec{std::move(island_exe)});
+            IslandExec exec;
+            //std::unique_ptr<cv::gimpl::GIslandExecutable>, std::unique_ptr<cv::gimpl::GAsyncIslandExecutable>
+            if (util::holds_alternative<std::unique_ptr<cv::gimpl::GIslandExecutable>>(island_exe))
+            {
+                std::shared_ptr<cv::gimpl::GIslandExecutable> p(std::move(util::get<std::unique_ptr<cv::gimpl::GIslandExecutable>>(island_exe)));
+                exec.object = p;
+            }
+            g.metadata(nh).set(std::move(exec));
         }
     }
     g.metadata().set(IslandsCompiled{});
@@ -319,5 +327,32 @@ ade::NodeHandle GIslandModel::producerOf(const ConstGraph &g, ade::NodeHandle &d
     return ade::NodeHandle();
 }
 
-} // namespace cv
+bool canReshape(island_exec_shared_ptr_variant_t const& isl_exec)
+{
+    if (cv::util::holds_alternative<std::shared_ptr<GIslandExecutable>>(isl_exec)){
+        auto & isl = cv::util::get<std::shared_ptr<GIslandExecutable>>(isl_exec);
+        return isl->canReshape();
+    } else if (cv::util::holds_alternative<std::shared_ptr<GAsyncIslandExecutable>>(isl_exec)){
+        auto & isl = cv::util::get<std::shared_ptr<GAsyncIslandExecutable>>(isl_exec);
+        return isl->canReshape();
+    } else {
+        GAPI_Assert(false);
+        return false;
+    }
+}
+
+void reshape(island_exec_shared_ptr_variant_t & isl_exec, ade::Graph& g, const GCompileArgs& args)
+{
+    if (cv::util::holds_alternative<std::shared_ptr<GIslandExecutable>>(isl_exec)){
+        auto & isl = cv::util::get<std::shared_ptr<GIslandExecutable>>(isl_exec);
+        isl->reshape(g, args);
+    } else if (cv::util::holds_alternative<std::shared_ptr<GAsyncIslandExecutable>>(isl_exec)){
+        auto & isl = cv::util::get<std::shared_ptr<GAsyncIslandExecutable>>(isl_exec);
+        isl->reshape(g, args);
+    } else {
+        GAPI_Assert(false);
+    }
+}
+
 } // namespace gimpl
+} // namespace cv

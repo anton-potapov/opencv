@@ -58,6 +58,9 @@ namespace detail {
         // (e.g. topology's partial execution)
         std::size_t num_in;  // How many inputs are defined in the operation
         std::size_t num_out; // How many outputs are defined in the operation
+
+        bool    use_async;       // use asynchronous interface
+        bool    use_streams; // Use IE streams for inference
     };
 } // namespace detail
 
@@ -76,10 +79,14 @@ template<typename Net> class Params {
 public:
     Params(const std::string &model,
            const std::string &weights,
-           const std::string &device)
+           const std::string &device,
+           bool    use_async   = false,
+           bool    use_streams = false )
         : desc{ model, weights, device, {}, {}, {}
               , std::tuple_size<typename Net::InArgs>::value
               , std::tuple_size<typename Net::OutArgs>::value
+              , use_async
+              , use_streams
               } {
     };
 

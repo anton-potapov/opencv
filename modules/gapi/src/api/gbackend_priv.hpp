@@ -36,6 +36,8 @@ class GAPI_EXPORTS cv::gapi::GBackend::Priv
 public:
     using EPtr = std::unique_ptr<cv::gimpl::GIslandExecutable>;
 
+    using ESyncAsyncPtrVar = util::variant<std::unique_ptr<cv::gimpl::GIslandExecutable>, std::unique_ptr<cv::gimpl::GAsyncIslandExecutable>>;
+
     virtual void unpackKernel(ade::Graph            &graph,
                               const ade::NodeHandle &op_node,
                               const GKernelImpl     &impl);
@@ -51,11 +53,12 @@ public:
                          const std::vector<ade::NodeHandle> &nodes) const;
 
 
-    virtual EPtr compile(const ade::Graph   &graph,
+    virtual ESyncAsyncPtrVar compile(const ade::Graph   &graph,
                          const GCompileArgs &args,
                          const std::vector<ade::NodeHandle> &nodes,
                          const std::vector<cv::gimpl::Data>& ins_data,
                          const std::vector<cv::gimpl::Data>& outs_data) const;
+
 
     // Ask backend to provide general backend-specific compiler passes
     virtual void addBackendPasses(ade::ExecutionEngineSetupContext &);

@@ -371,7 +371,7 @@ void emitterActorThread(std::shared_ptr<cv::gimpl::GIslandEmitter> emitter,
 void islandActorThread(std::vector<cv::gimpl::RcDesc> in_rcs,                // FIXME: this is...
                        std::vector<cv::gimpl::RcDesc> out_rcs,               // FIXME: ...basically just...
                        cv::GMetaArgs out_metas,                              // ...
-                       std::shared_ptr<cv::gimpl::GIslandExecutable> island, // FIXME: ...a copy of OpDesc{}.
+                       cv::gimpl::island_exec_shared_ptr_variant_t island, // FIXME: ...a copy of OpDesc{}.
                        std::vector<Q*> in_queues,
                        cv::GRunArgs in_constants,
                        std::vector< std::vector<Q*> > out_queues)
@@ -484,7 +484,17 @@ void islandActorThread(std::vector<cv::gimpl::RcDesc> in_rcs,                // 
             }
         }
         // Now ask Island to execute on this data
-        island->run(std::move(isl_inputs), std::move(isl_outputs));
+
+        if (cv::util::holds_alternative<std::shared_ptr<cv::gimpl::GIslandExecutable>>(island)){
+            auto & isl = cv::util::get<std::shared_ptr<cv::gimpl::GIslandExecutable>>(island);
+            isl->run(std::move(isl_inputs), std::move(isl_outputs));
+//        } else if (cv::util::holds_alternative<std::shared_ptr<GAsyncIslandExecutable>>(island)){
+//            auto & isl = cv::util::get<std::shared_ptr<GAsyncIslandExecutable>>(island);
+//            return isl->canReshape();
+        } else {
+            GAPI_Assert(false);
+        }
+
 
         // Once executed, dispatch our results down to the pipeline.
         for (auto &&it : ade::util::zip(ade::util::toRange(out_queues),
@@ -610,9 +620,10 @@ cv::gimpl::GStreamingExecutor::GStreamingExecutor(std::unique_ptr<ade::Graph> &&
                 for (auto in_slot_nh  : nh->inNodes())  xtract_in(in_slot_nh,  input_rcs);
                 for (auto out_slot_nh : nh->outNodes()) xtract_out(out_slot_nh, output_rcs, output_metas);
 
-                std::shared_ptr<GIslandExecutable> isl_exec = islands_compiled
-                    ? m_gim.metadata(nh).get<IslandExec>().object
-                    : nullptr;
+                using isl_exec_t = decltype(OpDesc::isl_exec);
+                auto isl_exec = islands_compiled
+                    ? isl_exec_t(m_gim.metadata(nh).get<IslandExec>().object)
+                    : isl_exec_t();
                 m_ops.emplace_back(OpDesc{ std::move(input_rcs)
                                          , std::move(output_rcs)
                                          , std::move(output_metas)
@@ -737,7 +748,7 @@ void cv::gimpl::GStreamingExecutor::setSource(GRunArgs &&ins)
             for (auto& op : m_ops)
             {
                 op.isl_exec = m_gim.metadata(op.nh).get<IslandExec>().object;
-                is_reshapable &= op.isl_exec->canReshape();
+                is_reshapable &= cv::gimpl::canReshape(op.isl_exec);
             }
             update_int_metas(); // (7)
             m_reshapable = util::make_optional(is_reshapable);
@@ -746,7 +757,7 @@ void cv::gimpl::GStreamingExecutor::setSource(GRunArgs &&ins)
         {
             for (auto& op : m_ops)
             {
-                op.isl_exec->reshape(*m_orig_graph, m_comp_args); // (9)
+                cv::gimpl::reshape(op.isl_exec, *m_orig_graph, m_comp_args); // (9)
             }
             update_int_metas(); // (10)
         }
