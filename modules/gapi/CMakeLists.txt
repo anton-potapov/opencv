@@ -38,6 +38,10 @@ if(MSVC)
   endif()
 endif()
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")  # don't add Clang here: issue should be investigated and fixed (workaround for Apple only)
+  ocv_warnings_disable(CMAKE_CXX_FLAGS -Wrange-loop-analysis)  # https://github.com/opencv/opencv/issues/18928
+endif()
+
 file(GLOB gapi_ext_hdrs
     "${CMAKE_CURRENT_LIST_DIR}/include/opencv2/*.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/include/opencv2/${name}/*.hpp"
@@ -57,6 +61,7 @@ file(GLOB gapi_ext_hdrs
 
 set(gapi_srcs
     # Front-end part
+    src/api/grunarg.cpp
     src/api/gorigin.cpp
     src/api/gmat.cpp
     src/api/garray.cpp
@@ -132,15 +137,19 @@ set(gapi_srcs
     src/backends/ie/giebackend.cpp
     src/backends/ie/giebackend/giewrapper.cpp
 
-    # Render Backend.
+    # ONNX backend
+    src/backends/onnx/gonnxbackend.cpp
+
+    # Render backend
     src/backends/render/grenderocv.cpp
     src/backends/render/ft_render.cpp
 
-    #PlaidML Backend
+    # PlaidML Backend
     src/backends/plaidml/gplaidmlcore.cpp
     src/backends/plaidml/gplaidmlbackend.cpp
 
-    # Compound
+    # Common backend code
+    src/backends/common/gmetabackend.cpp
     src/backends/common/gcompoundbackend.cpp
     src/backends/common/gcompoundkernel.cpp
 
@@ -210,9 +219,19 @@ if(HAVE_PLAIDML)
   ocv_target_include_directories(${the_module} SYSTEM PRIVATE ${PLAIDML_INCLUDE_DIRS})
 endif()
 
+
 if(WIN32)
   # Required for htonl/ntohl on Windows
   ocv_target_link_libraries(${the_module} PRIVATE wsock32 ws2_32)
+endif()
+
+if(HAVE_ONNX)
+  ocv_target_link_libraries(${the_module} PRIVATE ${ONNX_LIBRARY})
+  ocv_target_compile_definitions(${the_module} PRIVATE HAVE_ONNX=1)
+  if(TARGET opencv_test_gapi)
+    ocv_target_compile_definitions(opencv_test_gapi PRIVATE HAVE_ONNX=1)
+    ocv_target_link_libraries(opencv_test_gapi PRIVATE ${ONNX_LIBRARY})
+  endif()
 endif()
 
 ocv_add_perf_tests()

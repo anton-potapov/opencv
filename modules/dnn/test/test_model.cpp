@@ -206,6 +206,8 @@ TEST_P(Test_Model, DetectionOutput)
     {
         if (backend == DNN_BACKEND_OPENCV)
             scoreDiff = 4e-3;
+        else
+            scoreDiff = 2e-2;
         iouDiff = 1.8e-1;
     }
 
@@ -261,7 +263,7 @@ TEST_P(Test_Model, DetectionMobilenetSSD)
     }
     else if (target == DNN_TARGET_CUDA_FP16)
     {
-        scoreDiff = 4e-4;
+        scoreDiff = 0.002;
         iouDiff = 1e-2;
     }
     float confThreshold = FLT_MIN;

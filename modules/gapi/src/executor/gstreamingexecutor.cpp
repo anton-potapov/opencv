@@ -13,6 +13,10 @@
 
 #include <opencv2/gapi/opencv_includes.hpp>
 
+#if !defined(GAPI_STANDALONE)
+#include <opencv2/gapi/core.hpp> // GCopy -- FIXME - to be removed!
+#endif // GAPI_STANDALONE
+
 #include "api/gproto_priv.hpp" // ptr(GRunArgP)
 #include "compiler/passes/passes.hpp"
 #include "backends/common/gbackend.hpp" // createMat
@@ -78,6 +82,10 @@ struct DataQueue {
 
     // FIXME: ADE metadata requires types to be copiable
     std::shared_ptr<cv::gimpl::stream::Q> q;
+};
+
+struct DesyncSpecialCase {
+    static const char *name() { return "DesyncSpecialCase"; }
 };
 
 std::vector<cv::gimpl::stream::Q*> reader_queues(      ade::Graph &g,
@@ -342,16 +350,14 @@ bool QueueReader::getInputVector(std::vector<Q*> &in_queues,
             // value-initialized scalar)
             // It can also hold a constant value received with
             // Stop::Kind::CNST message (see above).
-            // FIXME: Variant move problem
-            isl_inputs[id] = const_cast<const cv::GRunArg&>(in_constants[id]);
+            isl_inputs[id] = in_constants[id];
             continue;
         }
 
         q->pop(m_cmd[id]);
         if (!cv::util::holds_alternative<Stop>(m_cmd[id]))
         {
-            // FIXME: Variant move problem
-            isl_inputs[id] = const_cast<const cv::GRunArg &>(cv::util::get<cv::GRunArg>(m_cmd[id]));
+            isl_inputs[id] = cv::util::get<cv::GRunArg>(m_cmd[id]);
         }
         else // A Stop sign
         {
@@ -374,7 +380,7 @@ bool QueueReader::getInputVector(std::vector<Q*> &in_queues,
                 // NEXT time (on a next call to getInputVector()), the
                 // "q==nullptr" check above will be triggered, but now
                 // we need to make it manually:
-                isl_inputs[id] = const_cast<const cv::GRunArg&>(in_constants[id]);
+                isl_inputs[id] = in_constants[id];
             }
             else
             {
@@ -658,8 +664,7 @@ class StreamingOutput final: public cv::gimpl::GIslandExecutable::IOutput
             Cmd cmd;
             if (cv::util::holds_alternative<cv::GRunArg>(post_iter->data))
             {
-                // FIXME: That ugly VARIANT problem
-                cmd = Cmd{const_cast<const cv::GRunArg&>(cv::util::get<cv::GRunArg>(post_iter->data))};
+                cmd = Cmd{cv::util::get<cv::GRunArg>(post_iter->data)};
             }
             else
             {
@@ -669,8 +674,7 @@ class StreamingOutput final: public cv::gimpl::GIslandExecutable::IOutput
             }
             for (auto &&q : m_out_queues[out_idx])
             {
-                // FIXME: This ugly VARIANT problem
-                q->push(const_cast<const Cmd&>(cmd));
+                q->push(cmd);
             }
             post_iter = m_postings[out_idx].erase(post_iter);
         }
@@ -700,6 +704,15 @@ class StreamingOutput final: public cv::gimpl::GIslandExecutable::IOutput
             }
         }
     }
+    void meta(const cv::GRunArgP &out, const cv::GRunArg::Meta &m) override
+    {
+        const auto it = m_postIdx.find(cv::gimpl::proto::ptr(out));
+        GAPI_Assert(it != m_postIdx.end());
+
+        const auto out_iter = it->second.second;
+        cv::util::get<cv::GRunArg>(out_iter->data).meta = m;
+    }
+
 public:
     explicit StreamingOutput(const cv::GMetaArgs &metas,
                              std::vector< std::vector<Q*> > &out_queues,
@@ -761,6 +774,7 @@ void islandActorThread(std::vector<cv::gimpl::RcDesc> in_rcs,                // 
 void collectorThread(std::vector<Q*>   in_queues,
                      std::vector<int>  in_mapping,
                      const std::size_t out_size,
+                     const bool        handle_stop,
                      Q&                out_queue)
 {
     // These flags are static now: regardless if the sync or
@@ -775,9 +789,14 @@ void collectorThread(std::vector<Q*>   in_queues,
     while (true)
     {
         cv::GRunArgs this_result(out_size);
-        if (!qr.getResultsVector(in_queues, in_mapping, out_size, this_result))
+        const bool ok = qr.getResultsVector(in_queues, in_mapping, out_size, this_result);
+        if (!ok)
         {
-            out_queue.push(Cmd{Stop{}});
+            if (handle_stop)
+            {
+                out_queue.push(Cmd{Stop{}});
+            }
+            // Terminate the thread anyway
             return;
         }
         out_queue.push(Cmd{Result{std::move(this_result), flags}});
@@ -936,19 +955,53 @@ cv::gimpl::GStreamingExecutor::GStreamingExecutor(std::unique_ptr<ade::Graph> &&
                                          , isl_exec
                                          });
                 // Initialize queues for every operation's input
-                ade::TypedGraph<DataQueue> qgr(*m_island_graph);
+                ade::TypedGraph<DataQueue, DesyncSpecialCase> qgr(*m_island_graph);
+                bool is_desync_start = false;
                 for (auto eh : nh->inEdges())
                 {
                     // ...only if the data is not compile-const
                     if (const_ins.count(eh->srcNode()) == 0) {
                         if (m_gim.metadata(eh).contains<DesyncIslEdge>()) {
                             qgr.metadata(eh).set(DataQueue(DataQueue::DESYNC));
+                            is_desync_start = true;
+                        } else if (qgr.metadata(eh).contains<DesyncSpecialCase>()) {
+                            // See comment below
+                            // Limit queue size to 1 in this case
+                            qgr.metadata(eh).set(DataQueue(1u));
                         } else {
                             qgr.metadata(eh).set(DataQueue(queue_capacity));
                         }
                         m_internal_queues.insert(qgr.metadata(eh).get<DataQueue>().q.get());
                     }
                 }
+                // WORKAROUND:
+                // Since now we always know desync() is followed by copy(),
+                // copy is always the island with DesyncIslEdge.
+                // Mark the node's outputs a special way so then its following
+                // queue sizes will be limited to 1 (to avoid copy reading more
+                // data in advance - as there's no other way for the underlying
+                // "slow" part to control it)
+                if (is_desync_start) {
+                    auto isl = m_gim.metadata(nh).get<FusedIsland>().object;
+                    // In the current implementation, such islands
+                    // _must_ start with copy
+                    GAPI_Assert(isl->in_ops().size() == 1u);
+#if !defined(GAPI_STANDALONE)
+                    GAPI_Assert(GModel::Graph(*m_orig_graph)
+                                .metadata(*isl->in_ops().begin())
+                                .get<cv::gimpl::Op>()
+                                .k.name == cv::gapi::core::GCopy::id());
+#endif // GAPI_STANDALONE
+                    for (auto out_nh : nh->outNodes()) {
+                        for (auto out_eh : out_nh->outEdges()) {
+                            qgr.metadata(out_eh).set(DesyncSpecialCase{});
+                        }
+                    }
+                }
+                // It is ok to do it here since the graph is visited in
+                // a topologic order and its consumers (those checking
+                // their input edges & initializing queues) are yet to be
+                // visited
             }
             break;
         case NodeKind::SLOT:
@@ -1178,10 +1231,6 @@ void cv::gimpl::GStreamingExecutor::setSource(GRunArgs &&ins)
                                real_video_completion_cb);
     }
 
-    for (auto &&op : m_ops) {
-        op.isl_exec->handleNewStream();
-    }
-
     // Now do this for every island (in a topological order)
     for (auto &&op : m_ops)
     {
@@ -1221,12 +1270,22 @@ void cv::gimpl::GStreamingExecutor::setSource(GRunArgs &&ins)
     // If there are desynchronized parts in the graph, there may be
     // multiple theads polling every separate (desynchronized)
     // branch in the graph individually.
+    const bool has_main_path = m_sink_sync.end() !=
+        std::find(m_sink_sync.begin(), m_sink_sync.end(), -1);
     for (auto &&info : m_collector_map) {
         m_threads.emplace_back(collectorThread,
                                info.second.queues,
                                info.second.mapping,
                                m_sink_queues.size(),
+                               has_main_path ? info.first == -1 : true, // see below (*)
                                std::ref(m_out_queue));
+
+        // (*) - there may be a problem with desynchronized paths when those work
+        // faster than the main path. In this case, the desync paths get "Stop" message
+        // earlier and thus broadcast it down to pipeline gets stopped when there is
+        // some "main path" data to process. This new collectorThread's flag regulates it:
+        // - desync paths should never post Stop message if there is a main path.
+        // - if there is no main path, than any desync path can terminate the execution.
     }
     state = State::READY;
 }
