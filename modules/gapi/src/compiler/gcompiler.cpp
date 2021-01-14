@@ -457,7 +457,12 @@ cv::GCompiled cv::gimpl::GCompiler::produceCompiled(GPtr &&pg)
 
     const auto &outMetas = GModel::ConstGraph(*pg).metadata()
         .get<OutputMeta>().outMeta;
-    std::unique_ptr<GExecutor> pE(new GExecutor(std::move(pg)));
+#if defined(USE_GAPI_TBB_EXECUTOR)
+    using executor_t = GTBBExecutor;
+#else
+    using executor_t = GExecutor;
+#endif
+    std::unique_ptr<GExecutor> pE(new executor_t(std::move(pg)));
     // FIXME: select which executor will be actually used,
     // make GExecutor abstract.
 
