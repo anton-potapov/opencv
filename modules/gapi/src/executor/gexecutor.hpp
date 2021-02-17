@@ -16,7 +16,7 @@
 #include <ade/graph.hpp>
 
 #include "backends/common/gbackend.hpp"
-#define USE_GAPI_TBB_EXECUTOR 0
+#define USE_GAPI_TBB_EXECUTOR 1
 #if defined(USE_GAPI_TBB_EXECUTOR)
 #include "gtbbexecutor.hpp"
 #endif
