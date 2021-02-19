@@ -16,10 +16,17 @@
 #include <ade/graph.hpp>
 
 #include "backends/common/gbackend.hpp"
-#define USE_GAPI_TBB_EXECUTOR 1
-#if defined(USE_GAPI_TBB_EXECUTOR)
 #include "gtbbexecutor.hpp"
-#endif
+
+#if HAVE_TBB && (TBB_INTERFACE_VERSION < 12000)
+// TODO: TBB task API has been deprecated and removed in 12000
+    #define USE_GAPI_TBB_EXECUTOR 1
+#else
+    #define USE_GAPI_TBB_EXECUTOR 0
+#endif //TBB_INTERFACE_VERSION
+
+
+
 
 namespace cv {
 namespace gimpl {
